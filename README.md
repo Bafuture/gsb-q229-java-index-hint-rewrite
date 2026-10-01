@@ -30,3 +30,25 @@ Pair-wise GSB 标注任务仓库（第 15 批 / 229）。
 1. 在本仓库中完成提示词要求的全部内容。
 2. `./mvnw -q verify` 必须通过。
 3. 完成后在所属分支（A 或 B）上提交，产物快照的父提交必须是初始环境快照。
+
+## 组件使用说明
+
+核心入口为 `com.example.gsb.indexhint.QueryRewriteEngine`：
+
+```java
+QueryRewriteEngine engine = new QueryRewriteEngine();
+RewriteRequest request = RewriteRequest.of(
+        AndCondition.of(
+                new FunctionCondition("date", "created_at", Operator.EQ, "2024-01-15"),
+                Comparison.eq("status", "PAID")),
+        List.of(IndexDefinition.of("idx_status_created", "status", "created_at")));
+
+RewriteResult result = engine.rewrite(request);          // 可 .forceIndex("idx_x") 强制索引
+System.out.println(result.report().format());            // 重写前后条件 + 选中索引 + 选择理由
+System.out.println(result.statistics());                 // 规则命中次数 / 可选索引数 / 被排除索引及原因
+result.verifyEquivalence(dataset);                       // 在同一批数据上验证重写前后结果一致
+```
+
+- 条件模型：`Comparison`（字段/操作符/值）、`FunctionCondition`、`AndCondition`、`OrCondition`、`UnionCondition`。
+- 内置规则：`FunctionToRangeRule`（`DATE`/`YEAR` 等值条件转范围）、`OrToUnionRule`（各分支均可用索引时 OR 转 UNION）、`CompositeIndexOrderRule`（按组合索引列序调整条件顺序）。
+- 索引选择：`IndexSelector` 按最左前缀匹配估算过滤比例与代价，输出选择理由；强制索引不可用时抛出 `IndexHintException` 并说明原因。
