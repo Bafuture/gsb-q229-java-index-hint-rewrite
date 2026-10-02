@@ -19,6 +19,20 @@ Pair-wise GSB 标注任务仓库（第 15 批 / 229）。
 ./mvnw -q verify
 ```
 
+## 实现说明
+
+组件位于 `com.example.gsb.indexhint`，入口为 `QueryOptimizer`。
+
+- 结构化模型：`Query` / `FieldCondition` / `FunctionCondition` / `OrCondition` / `Index` / `TableStats`。
+- 重写规则（`RewriteRule`）：
+  - `FunctionToRangeRule`：`DATE(c) = '2024-01-15'`、`YEAR(c) = 2024` 改写为半开区间范围条件；
+  - `OrToUnionRule`：可分别命中索引的 OR 条件拆分为 `UNION ALL` 分支（按索引前缀判定）；
+  - `CompositeIndexReorderRule`：按组合索引列顺序前置 AND 条件。
+- 索引选择：`IndexSelector` 基于 `TableStats` 的基数与 min/max 估算每列过滤比例，连乘得到扫描行数，选代价最低者；不可用索引以原因排除。
+- 强制提示：`optimize(..., forcedIndex)`；索引不存在或无法覆盖任何条件时抛 `IndexHintException` 并说明原因。
+- 等价性验证：`optimizeWithSample(...)` 传入样本行，`EquivalenceChecker` 对重写前后实际执行结果（`RowExecutor`）做集合比对。
+- 排查输出：`OptimizationResult.report()` 输出原始/重写后条件、各分支选中索引及理由、规则命中次数、可选索引数、被排除索引及原因、等价性验证结论。
+
 ## 任务提示词
 
 以下为本题完整的 User Prompt 原文，两次执行必须使用完全相同的文本。
